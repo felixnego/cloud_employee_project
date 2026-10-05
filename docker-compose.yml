@@ -1,0 +1,53 @@
+# Two services, one image, no database server.
+#
+# `pipeline` is a one-shot job: batch pipelines should exit, not idle. Run it
+# with `docker compose run --rm pipeline <subcommand>` (see the Makefile).
+# `notebook` is the long-running one, and the only thing that needs a port.
+#
+# There is deliberately no Postgres here. The warehouse is Parquet files plus a
+# DuckDB file on a shared volume: single-writer, zero-ops, and the local twin
+# of MotherDuck if this ever needs to be hosted.
+
+x-common: &common
+  build:
+    context: .
+  image: creative-pipeline:dev
+  environment:
+    VIDEO_DIR: /data/videos
+    WAREHOUSE_DIR: /warehouse
+    CACHE_DIR: /cache
+    MODEL_DIR: /opt/models
+    OMP_NUM_THREADS: "4"
+
+services:
+  pipeline:
+    <<: *common
+    volumes:
+      - ./video_data:/data/videos:ro   # inputs are never written to
+      - ./warehouse:/warehouse         # Parquet + DuckDB, the data layer
+      - ./cache:/cache                 # decoded frames + WAV, reusable
+      - ./docs:/app/docs               # `run docs` writes schema.md back out
+      - ./transforms:/app/transforms    # edit SQL without rebuilding the image
+    # ENTRYPOINT is `python -m pipeline.run`; pass a subcommand as the command.
+    command: ["all"]
+
+  notebook:
+    <<: *common
+    entrypoint: []
+    command:
+      - jupyter
+      - lab
+      - --ip=0.0.0.0
+      - --port=8888
+      - --no-browser
+      - --allow-root
+      - --ServerApp.token=
+      - --ServerApp.password=
+      - --ServerApp.root_dir=/notebooks
+    working_dir: /notebooks
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/notebooks
+      - ./warehouse:/warehouse         # opened read_only from the notebook
+      - ./video_data:/data/videos:ro   # so you can watch the clip you query

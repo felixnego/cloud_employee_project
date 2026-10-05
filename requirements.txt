@@ -1,0 +1,23 @@
+# ---- core data layer -------------------------------------------------------
+numpy>=1.26,<2.3
+pandas>=2.2,<3
+pyarrow>=17
+duckdb>=1.1
+
+# ---- video / audio decode & analysis --------------------------------------
+opencv-python-headless>=4.10,<5     # per-frame visual features (feature 4)
+scenedetect>=0.6.4                  # shot boundaries (feature 2)
+librosa>=0.10.2                     # audio features (feature 5)
+soundfile>=0.12
+
+# ---- models: all ONNX / CTranslate2, deliberately no PyTorch --------------
+faster-whisper>=1.0.3               # transcript, CTranslate2 (feature 3)
+onnxruntime>=1.18                   # YuNet, FER+, YOLOX, CLIP (features 6-9)
+rapidocr-onnxruntime>=1.3.24        # on-screen text (feature 6)
+tokenizers>=0.19                    # CLIP text tokenizer (feature 9)
+Pillow>=10.3
+
+# ---- interface -------------------------------------------------------------
+tqdm>=4.66
+matplotlib>=3.8
+jupyterlab>=4.2

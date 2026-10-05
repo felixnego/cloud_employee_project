@@ -1,1 +1,16 @@
 .DS_Store
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Generated, and large. Rebuild with `make all`.
+warehouse/raw/
+warehouse/warehouse.duckdb
+cache/
+
+# warehouse/marts/ is deliberately NOT ignored: 660KB of Parquet + CSV is the
+# portable output, and committing it means an analyst can read the dataset
+# without Docker, a build, or the source videos.
+
+# Source videos are not redistributed here.
+video_data/*.mp4
