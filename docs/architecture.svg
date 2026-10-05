@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="946" viewBox="0 0 1180 946" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9b9a95"/></marker><marker id="arrowAqua" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0f9e6e"/></marker><marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#e2651f"/></marker><marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#4a3aa7"/></marker></defs>
+<rect width="1180" height="946" fill="#fcfcfb"/>
+<text x="28" y="40" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="19" font-weight="700" fill="#0b0b0b" text-anchor="start">Creative feature extraction — architecture</text>
+<text x="28" y="62" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="400" fill="#52514e" text-anchor="start">Five MP4s in; a queryable warehouse out. Measured creative features, a synthetic audience panel, and two HTTP services.</text>
+<rect x="0" y="88" width="5" height="24" rx="2.5" fill="#2a78d6"/>
+<text x="16" y="105" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#2a78d6" text-anchor="start">SOURCES</text>
+<rect x="150" y="82" width="268" height="56" rx="9" fill="#ffffff" fill-opacity="1.0" stroke="#dcdbd6" stroke-opacity="1.0" stroke-width="1.4"/>
+<text x="166" y="104" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="600" fill="#0b0b0b" text-anchor="start">video_data/*.mp4</text>
+<text x="166" y="123" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">five creatives, mounted read-only</text>
+<rect x="444" y="82" width="296" height="56" rx="9" fill="#ffffff" fill-opacity="1.0" stroke="#e2651f" stroke-opacity="0.55" stroke-width="1.4"/>
+<text x="460" y="104" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="12.5" font-weight="600" fill="#e2651f" text-anchor="start">POST /creatives {url}</text>
+<text x="460" y="123" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">ingest API :8001 — lands in video_data/</text>
+<rect x="766" y="82" width="386" height="56" rx="9" fill="#ffffff" fill-opacity="1.0" stroke="#e2651f" stroke-opacity="0.55" stroke-width="1.4"/>
+<text x="782" y="104" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="12.5" font-weight="600" fill="#e2651f" text-anchor="start">POST /biometrics {session, rows[]}</text>
+<text x="782" y="123" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">ingest API :8001 — getUserMedia-shaped batches</text>
+<rect x="0" y="186" width="5" height="24" rx="2.5" fill="#2a78d6"/>
+<text x="16" y="203" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#2a78d6" text-anchor="start">EXTRACTION</text>
+<rect x="150" y="180" width="590" height="56" rx="9" fill="#2a78d6" fill-opacity="0.06" stroke="#2a78d6" stroke-opacity="0.4" stroke-width="1.4"/>
+<text x="166" y="202" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#2a78d6" text-anchor="start">prepare — decode once</text>
+<text x="166" y="221" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">ffmpeg → cache/&lt;sha256&gt;/ : frames @ 4 Hz + 16 kHz mono WAV</text>
+<rect x="150" y="256" width="590" height="104" rx="9" fill="#2a78d6" fill-opacity="0.06" stroke="#2a78d6" stroke-opacity="0.4" stroke-width="1.4"/>
+<text x="166" y="278" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" fill="#2a78d6" text-anchor="start">nine extractors</text>
+<text x="166" y="296" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#52514e" text-anchor="start">one interface · independent · manifest skips unchanged work</text>
+<rect x="166" y="306" width="76.8" height="24" rx="12" fill="#2a78d6" fill-opacity="0.1" stroke="#2a78d6" stroke-opacity="0.45" stroke-width="1.1"/>
+<text x="204.4" y="322.5" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#2a78d6" text-anchor="middle">metadata</text>
+<rect x="248.8" y="306" width="55.5" height="24" rx="12" fill="#2a78d6" fill-opacity="0.1" stroke="#2a78d6" stroke-opacity="0.45" stroke-width="1.1"/>
+<text x="276.55" y="322.5" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#2a78d6" text-anchor="middle">shots</text>
+<rect x="310.3" y="306" width="91.0" height="24" rx="12" fill="#2a78d6" fill-opacity="0.1" stroke="#2a78d6" stroke-opacity="0.45" stroke-width="1.1"/>
+<text x="355.8" y="322.5" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#2a78d6" text-anchor="middle">transcript</text>
+<rect x="407.3" y="306" width="62.599999999999994" height="24" rx="12" fill="#2a78d6" fill-opacity="0.1" stroke="#2a78d6" stroke-opacity="0.45" stroke-width="1.1"/>
+<text x="438.6" y="322.5" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#2a78d6" text-anchor="middle">visual</text>
+<rect x="475.9" y="306" width="55.5" height="24" rx="12" fill="#2a78d6" fill-opacity="0.1" stroke="#2a78d6" stroke-opacity="0.45" stroke-width="1.1"/>
+<text x="503.65" y="322.5" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#2a78d6" text-anchor="middle">audio</text>
+<rect x="166" y="332" width="41.3" height="24" rx="12" fill="#2a78d6" fill-opacity="0.1" stroke="#2a78d6" stroke-opacity="0.45" stroke-width="1.1"/>
+<text x="186.65" y="348.5" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#2a78d6" text-anchor="middle">ocr</text>
+<rect x="213.3" y="332" width="55.5" height="24" rx="12" fill="#2a78d6" fill-opacity="0.1" stroke="#2a78d6" stroke-opacity="0.45" stroke-width="1.1"/>
+<text x="241.05" y="348.5" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#2a78d6" text-anchor="middle">faces</text>
+<rect x="274.8" y="332" width="69.69999999999999" height="24" rx="12" fill="#2a78d6" fill-opacity="0.1" stroke="#2a78d6" stroke-opacity="0.45" stroke-width="1.1"/>
+<text x="309.65" y="348.5" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#2a78d6" text-anchor="middle">objects</text>
+<rect x="350.5" y="332" width="62.599999999999994" height="24" rx="12" fill="#2a78d6" fill-opacity="0.1" stroke="#2a78d6" stroke-opacity="0.45" stroke-width="1.1"/>
+<text x="381.8" y="348.5" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#2a78d6" text-anchor="middle">labels</text>
+<rect x="766" y="256" width="290" height="104" rx="9" fill="#ffffff" fill-opacity="1.0" stroke="#e2651f" stroke-opacity="0.55" stroke-width="1.4"/>
+<text x="782" y="278" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="12.5" font-weight="700" fill="#e2651f" text-anchor="start">processing API :8002</text>
+<text x="782" y="298" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">POST /jobs → 202 → poll</text>
+<text x="782" y="317" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">async · one worker · no broker</text>
+<text x="782" y="336" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">calls extract_one() — the</text>
+<text x="782" y="351" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">seam for a real queue</text>
+<rect x="0" y="406" width="5" height="24" rx="2.5" fill="#0f9e6e"/>
+<text x="16" y="423" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#0f9e6e" text-anchor="start">LANDED</text>
+<rect x="150" y="400" width="286" height="60" rx="9" fill="#0f9e6e" fill-opacity="0.07" stroke="#0f9e6e" stroke-opacity="0.45" stroke-width="1.4"/>
+<text x="166" y="422" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="12.5" font-weight="600" fill="#0f9e6e" text-anchor="start">warehouse/raw/</text>
+<text x="166" y="441" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">one Parquet per extractor, per creative</text>
+<rect x="458" y="400" width="282" height="60" rx="9" fill="#4a3aa7" fill-opacity="0.07" stroke="#4a3aa7" stroke-opacity="0.45" stroke-width="1.4"/>
+<text x="474" y="422" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="12.5" font-weight="600" fill="#4a3aa7" text-anchor="start">warehouse/audience/</text>
+<text x="474" y="441" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">synthetic panel — generated</text>
+<rect x="766" y="400" width="386" height="60" rx="9" fill="#e2651f" fill-opacity="0.07" stroke="#e2651f" stroke-opacity="0.45" stroke-width="1.4"/>
+<text x="782" y="422" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="12.5" font-weight="600" fill="#e2651f" text-anchor="start">warehouse/landing/</text>
+<text x="782" y="441" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">ingested batches, awaiting make load-ingested</text>
+<rect x="0" y="508" width="5" height="24" rx="2.5" fill="#0f9e6e"/>
+<text x="16" y="525" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#0f9e6e" text-anchor="start">WAREHOUSE</text>
+<rect x="150" y="500" width="1002" height="152" rx="9" fill="#ffffff" fill-opacity="1.0" stroke="#0f9e6e" stroke-opacity="0.55" stroke-width="1.8"/>
+<text x="170" y="526" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" font-weight="700" fill="#0f9e6e" text-anchor="start">warehouse.duckdb</text>
+<text x="1134" y="526" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="end">built by transforms/*.sql — raw views → dimensions → spine → marts</text>
+<rect x="170" y="542" width="300" height="94" rx="9" fill="#0f9e6e" fill-opacity="0.06" stroke="#0f9e6e" stroke-opacity="0.35" stroke-width="1.4"/>
+<text x="186" y="564" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="700" fill="#0b0b0b" text-anchor="start">main</text>
+<text x="186" y="582" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="700" fill="#0f9e6e" text-anchor="start">MEASURED from real video</text>
+<text x="186" y="604" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">creatives · shots · transcripts</text>
+<text x="186" y="622" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">creative_seconds  ← the spine</text>
+<rect x="490" y="542" width="300" height="94" rx="9" fill="#4a3aa7" fill-opacity="0.06" stroke="#4a3aa7" stroke-opacity="0.35" stroke-width="1.4"/>
+<text x="506" y="564" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="700" fill="#0b0b0b" text-anchor="start">audience</text>
+<text x="506" y="582" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="700" fill="#4a3aa7" text-anchor="start">SYNTHETIC — every row stamped</text>
+<text x="506" y="604" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">viewers · sessions · survey · IAT</text>
+<text x="506" y="622" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">biometric_seconds</text>
+<rect x="810" y="542" width="324" height="94" rx="9" fill="#e2651f" fill-opacity="0.06" stroke="#e2651f" stroke-opacity="0.35" stroke-width="1.4"/>
+<text x="826" y="564" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="700" fill="#0b0b0b" text-anchor="start">analysis</text>
+<text x="826" y="582" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="700" fill="#e2651f" text-anchor="start">MIXED provenance — labelled</text>
+<text x="826" y="604" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">viewer_seconds  ← the join</text>
+<text x="826" y="622" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">creative_performance</text>
+<rect x="0" y="708" width="5" height="24" rx="2.5" fill="#0f9e6e"/>
+<text x="16" y="725" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#0f9e6e" text-anchor="start">PUBLISHED</text>
+<rect x="150" y="702" width="490" height="56" rx="9" fill="#0f9e6e" fill-opacity="0.07" stroke="#0f9e6e" stroke-opacity="0.45" stroke-width="1.4"/>
+<text x="166" y="724" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="12.5" font-weight="600" fill="#0f9e6e" text-anchor="start">warehouse/marts/*.parquet + .csv</text>
+<text x="166" y="743" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">committed — readable with no Docker, no build</text>
+<rect x="662" y="702" width="438" height="56" rx="9" fill="#ffffff" fill-opacity="1.0" stroke="#dcdbd6" stroke-opacity="1.0" stroke-width="1.4"/>
+<text x="678" y="724" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="12.5" font-weight="600" fill="#0b0b0b" text-anchor="start">docs/schema.md · openapi-*.json</text>
+<text x="678" y="743" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">generated from the warehouse and the apps</text>
+<rect x="0" y="810" width="5" height="24" rx="2.5" fill="#2a78d6"/>
+<text x="16" y="827" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#2a78d6" text-anchor="start">CONSUMERS</text>
+<rect x="150" y="804" width="318" height="54" rx="9" fill="#ffffff" fill-opacity="1.0" stroke="#dcdbd6" stroke-opacity="1.0" stroke-width="1.4"/>
+<text x="166" y="826" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#0b0b0b" text-anchor="start">notebook</text>
+<text x="166" y="844" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">11-check acceptance + first read</text>
+<rect x="486" y="804" width="318" height="54" rx="9" fill="#ffffff" fill-opacity="1.0" stroke="#dcdbd6" stroke-opacity="1.0" stroke-width="1.4"/>
+<text x="502" y="826" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#0b0b0b" text-anchor="start">DuckDB / MotherDuck SQL</text>
+<text x="502" y="844" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">the analyst surface</text>
+<rect x="822" y="804" width="318" height="54" rx="9" fill="#ffffff" fill-opacity="1.0" stroke="#dcdbd6" stroke-opacity="1.0" stroke-width="1.4"/>
+<text x="838" y="826" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#0b0b0b" text-anchor="start">pandas · Polars · BI</text>
+<text x="838" y="844" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">straight off Parquet</text>
+<path d="M 284 138 V 180" fill="none" stroke="#9b9a95" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M 592 138 V 159.0 H 400 V 180" fill="none" stroke="#e2651f" stroke-width="1.8" marker-end="url(#arrowOrange)"/>
+<path d="M 445 236 V 256" fill="none" stroke="#9b9a95" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M 766 308 H 744" fill="none" stroke="#e2651f" stroke-width="1.8" marker-end="url(#arrowOrange)"/>
+<path d="M 293 360 V 400" fill="none" stroke="#9b9a95" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M 293 460 V 500" fill="none" stroke="#0f9e6e" stroke-width="1.8" marker-end="url(#arrowAqua)"/>
+<path d="M 1115 138 V 400" fill="none" stroke="#e2651f" stroke-width="1.8" marker-end="url(#arrowOrange)"/>
+<path d="M 900 460 V 501.0 H 700 V 542" fill="none" stroke="#e2651f" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#arrowOrange)"/>
+<path d="M 646 460 V 542" fill="none" stroke="#4a3aa7" stroke-width="1.8" marker-end="url(#arrowViolet)"/>
+<path d="M 320 636 V 678 H 480 V 462" fill="none" stroke="#4a3aa7" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrowViolet)"/>
+<text x="496" y="682" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#4a3aa7" text-anchor="start">audience/generate.py — the response is a function of the measured creative</text>
+<path d="M 395 652 V 702" fill="none" stroke="#0f9e6e" stroke-width="1.8" marker-end="url(#arrowAqua)"/>
+<path d="M 395 758 V 804" fill="none" stroke="#9b9a95" stroke-width="1.8" marker-end="url(#arrow)"/>
+<path d="M 651 652 V 804" fill="none" stroke="#9b9a95" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="662" y="882" width="490" height="46" rx="9" fill="#e2651f" fill-opacity="0.07" stroke="#e2651f" stroke-opacity="0.55" stroke-width="1.4" stroke-dasharray="4 3"/>
+<text x="678" y="901" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="700" fill="#e2651f" text-anchor="start">Single-writer rule</text>
+<text x="678" y="917" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#52514e" text-anchor="start">No API ever writes to warehouse.duckdb — ingest lands files, a batch load folds them in.</text>
+<text x="28" y="917" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="400" fill="#9b9a95" text-anchor="start">generated by docs/make_architecture.py</text>
+</svg>
