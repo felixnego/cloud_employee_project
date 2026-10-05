@@ -12,3 +12,6 @@
 - Important Note: Alongside SMEs, a production version of the infrastructure would have defined and implemented quality gates and tests for the video features extracted. 
 - Important Note: In this PoC the pipeline goes through the `extractors` and gets all the video features from the `.mp4` files. This is **not** the architecture I would recommend for production, which would most likely entail a job queue and parallel processing (either my model/feature or by file).
 ---
+- There is a separate DuckDB schema for the generated audience data. In this way, real data can be easily plucked it by any engineer wishing to develop on top of this. 
+- In order to suppor the above, there is a contract in `audience/contract.py` where I define the tables for the audience data. 
+- Audience data is not randomly generated. This adds complexity to the repo for the sake of making the notebook more realistic. The audience data is generated from the audience creative features.
