@@ -5,6 +5,7 @@
 - We will use DuckDB as the main repository layer for this exercise with the important note that this won't do in a production setup, with possibly more (concurrent) writers. However, parquet on disk works for the PoC due to the columnar and ready-heavy nature of the video processing pipeline.
 - We are going to use `Docker` (with `docker-compose` if needed) to keep the dependency management clean. This is especially needed for the video processing pipeline, since it has multiple Python dependencies.
 - **Assumption:** we will not handle, in this PoC, the case of ingesting new video data. 
+- **Assumption**: given that the main user can use SQL or Python to self-serve their insights, decided that the main UI layer should be a Jupyter Notebook. In a production environment, it is possible that can still be the case, with a separate visualisation layer (dashboards) added on top of the data warehouse.
 
 ---
 - Video features were selected based on a quick research of tools that can comfortably run on my local machine. In a production pipeline, the features would be carefully selected and defined by Subjetc Matter Experts (SMEs).

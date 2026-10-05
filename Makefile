@@ -5,7 +5,7 @@ COMPOSE := docker compose
 RUN     := $(COMPOSE) run --rm pipeline
 
 .DEFAULT_GOAL := help
-.PHONY: help build list all extract transform docs notebook shell clean clean-cache
+.PHONY: help build list all extract transform docs audience notebook shell clean clean-cache
 
 help:  ## show this help
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -29,6 +29,9 @@ transform:  ## build the DuckDB marts from raw Parquet
 docs:  ## regenerate docs/schema.md from the live warehouse
 	$(RUN) docs
 
+audience:  ## generate the synthetic audience panel, load it, and validate it
+	$(COMPOSE) run --rm --entrypoint python pipeline -m audience.run all
+
 notebook:  ## start JupyterLab on http://localhost:8888  (no token)
 	$(COMPOSE) up notebook
 
@@ -36,7 +39,7 @@ shell:  ## open a shell in the pipeline image
 	$(COMPOSE) run --rm --entrypoint bash pipeline
 
 clean:  ## delete the warehouse (keeps the decode cache)
-	rm -rf warehouse/raw warehouse/marts warehouse/warehouse.duckdb
+	rm -rf warehouse/raw warehouse/marts warehouse/audience warehouse/warehouse.duckdb
 
 clean-cache:  ## delete decoded frames and audio
 	rm -rf cache

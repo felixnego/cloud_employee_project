@@ -25,6 +25,14 @@ video_data/*.mp4
       |  transforms/10_export_marts.sql
       v
  [4] warehouse/marts/*.parquet + .csv <- everything else reads this
+
+Separately, the synthetic audience layer (see the end of this document):
+
+ audience/generate.py   reads main.creative_seconds, writes warehouse/audience/*.parquet
+      |
+      |  transforms_audience/*.sql
+      v
+ audience.*  (synthetic)  +  analysis.*  (measured creative x synthetic response)
 ```
 
 ## The nine extractors
@@ -573,3 +581,296 @@ The sampling rate each model actually ran at, so the warehouse describes its own
 | `sample_hz` | DOUBLE |
 | `frame_hz` | DOUBLE |
 | `step_frames` | BIGINT |
+
+
+---
+
+# Audience layer (SYNTHETIC)
+
+Everything below is **generated**, not measured. It lives in its own schemas so
+that a synthetic number can never be mistaken for a real one, and every row
+carries `data_source = 'synthetic_v1'`.
+
+The response is driven by the measured creative features: attention at second
+*t* is a function of the cuts, faces, speech and motion that `creative_seconds`
+records for that second, plus viewer traits, plus an AR(1) term. The
+coefficients that produced it are published in `audience.generator_params`, so
+an analysis can be checked against the truth that generated the data.
+
+`audience/contract.py` is the contract these tables satisfy. A real ingest would
+write the same tables and nothing downstream would change.
+
+## audience
+
+### `audience.viewers`
+
+**Grain** one row per panelist  ·  **Key** `viewer_id`  ·  **Rows** 300
+
+The panel. Demographics, device, consent, and two latent traits (attentiveness, expressiveness) that persist across sessions.
+
+> `latent_implicit_pref` is the viewer's true implicit preference. It is deliberately exposed: the IAT D-score is a *noisy measurement* of it, so analysis can be checked against truth. No real dataset has this column.
+
+> `consent_biometric` is false for a few panelists, whose sessions carry no biometric rows. Consent is modelled even in synthetic form because the real pipeline must honour it.
+
+| Column | Type |
+|--------|------|
+| `viewer_id` | VARCHAR |
+| `age` | BIGINT |
+| `age_band` | VARCHAR |
+| `gender` | VARCHAR |
+| `region` | VARCHAR |
+| `income_band` | VARCHAR |
+| `device` | VARCHAR |
+| `environment` | VARCHAR |
+| `recruitment_source` | VARCHAR |
+| `consent_biometric` | BOOLEAN |
+| `trait_attention` | DOUBLE |
+| `trait_expressiveness` | DOUBLE |
+| `trait_acquiescence` | DOUBLE |
+| `latent_implicit_pref` | DOUBLE |
+| `data_source` | VARCHAR |
+
+### `audience.sessions`
+
+**Grain** one row per (viewer, creative) exposure  ·  **Key** `session_id`  ·  **Rows** 749
+
+The exposure fact: who watched what, on what device, in what environment, and whether they finished.
+
+> Not every viewer sees every creative -- an incomplete block design, as a real panel would be. Check cell sizes before comparing creatives on a subgroup.
+
+> `watch_time_s` is shorter than the creative's duration when the viewer abandoned; `completed` flags it.
+
+| Column | Type |
+|--------|------|
+| `session_id` | VARCHAR |
+| `viewer_id` | VARCHAR |
+| `creative_id` | VARCHAR |
+| `started_at` | TIMESTAMP WITH TIME ZONE |
+| `device` | VARCHAR |
+| `environment` | VARCHAR |
+| `watch_time_s` | BIGINT |
+| `creative_duration_s` | BIGINT |
+| `completed` | BOOLEAN |
+| `consent_biometric` | BOOLEAN |
+| `data_source` | VARCHAR |
+
+### `audience.biometric_seconds`
+
+**Grain** one row per (session, second)  ·  **Key** `session_id, second`  ·  **Rows** 33,908
+
+The webcam-derived response trace. Joins directly onto `main.creative_seconds` on (creative_id, second).
+
+> The eight `p_*` emotion columns use the same taxonomy as the creative side's `face_detections`, so viewer expression and on-screen expression are directly comparable.
+
+> When `face_detected` is false the emotion and valence columns are NULL, not zero -- the webcam lost the face. Filter, do not impute, unless the analysis says otherwise.
+
+> Rows stop at abandonment. Absence of a row is data: it means the viewer had already left.
+
+| Column | Type |
+|--------|------|
+| `session_id` | VARCHAR |
+| `creative_id` | VARCHAR |
+| `viewer_id` | VARCHAR |
+| `second` | INTEGER |
+| `attention_index` | DOUBLE |
+| `gaze_on_screen` | BOOLEAN |
+| `face_detected` | BOOLEAN |
+| `valence` | DOUBLE |
+| `arousal` | DOUBLE |
+| `p_neutral` | DOUBLE |
+| `p_happiness` | DOUBLE |
+| `p_surprise` | DOUBLE |
+| `p_sadness` | DOUBLE |
+| `p_anger` | DOUBLE |
+| `p_disgust` | DOUBLE |
+| `p_fear` | DOUBLE |
+| `p_contempt` | DOUBLE |
+| `data_source` | VARCHAR |
+
+### `audience.survey_questions`
+
+**Grain** one row per question  ·  **Key** `question_id`  ·  **Rows** 8
+
+The post-exposure battery: recall, likeability, comprehension, purchase intent.
+
+> Long format on purpose -- adding a question is a row, not a schema migration.
+
+| Column | Type |
+|--------|------|
+| `question_id` | VARCHAR |
+| `question_text` | VARCHAR |
+| `response_type` | VARCHAR |
+| `data_source` | VARCHAR |
+
+### `audience.survey_responses`
+
+**Grain** one row per (session, question)  ·  **Key** `session_id, question_id`  ·  **Rows** 5,992
+
+Answers to the battery, driven by what actually happened during the exposure.
+
+> Response styles vary by panelist: some answer consistently high (acquiescence). `value_numeric` is comparable across questions of the same `response_type` only.
+
+| Column | Type |
+|--------|------|
+| `session_id` | VARCHAR |
+| `viewer_id` | VARCHAR |
+| `creative_id` | VARCHAR |
+| `question_id` | VARCHAR |
+| `response_type` | VARCHAR |
+| `value_numeric` | BIGINT |
+| `data_source` | VARCHAR |
+
+### `audience.iat_trials`
+
+**Grain** one row per (viewer, block, trial)  ·  **Key** `viewer_id, block, trial_index`  ·  **Rows** 12,000
+
+Raw Implicit Association Test reaction times -- the measurement, before scoring.
+
+> Congruent trials are faster than incongruent ones in proportion to the viewer's implicit preference. Error trials are flagged and excluded by the scoring step.
+
+| Column | Type |
+|--------|------|
+| `viewer_id` | VARCHAR |
+| `block` | VARCHAR |
+| `trial_index` | BIGINT |
+| `is_congruent` | BOOLEAN |
+| `reaction_time_ms` | DOUBLE |
+| `is_error` | BOOLEAN |
+| `data_source` | VARCHAR |
+
+### `audience.iat_scores`
+
+**Grain** one row per viewer  ·  **Key** `viewer_id`  ·  **Rows** 300
+
+The derived D-score: (mean incongruent RT - mean congruent RT) divided by the pooled standard deviation.
+
+> Positive D means faster on congruent pairings, i.e. an implicit preference toward the advertised brand.
+
+> `d_score` should correlate strongly but imperfectly with `viewers.latent_implicit_pref` -- that gap is measurement error, and it is intentional.
+
+| Column | Type |
+|--------|------|
+| `viewer_id` | VARCHAR |
+| `mean_rt_congruent_ms` | DOUBLE |
+| `mean_rt_incongruent_ms` | DOUBLE |
+| `pooled_sd_ms` | DOUBLE |
+| `n_valid_trials` | BIGINT |
+| `d_score` | DOUBLE |
+| `data_source` | VARCHAR |
+
+### `audience.generator_params`
+
+**Grain** one row per parameter  ·  **Key** `component, parameter`  ·  **Rows** 36
+
+The ground-truth coefficients used to generate this panel.
+
+> This is the point of a synthetic dataset: analysis can be validated. A model fitted to `analysis.viewer_seconds` should recover these values. If it does not, suspect the analysis.
+
+> A real panel has no such table.
+
+| Column | Type |
+|--------|------|
+| `component` | VARCHAR |
+| `parameter` | VARCHAR |
+| `value` | DOUBLE |
+| `data_source` | VARCHAR |
+
+### `audience.generator_manifest`
+
+**Grain** one row per generation run  ·  **Key** `run_id`  ·  **Rows** 1
+
+Provenance: seed, generator version, panel size, row counts.
+
+> The seed makes a run byte-reproducible: same seed, same panel.
+
+| Column | Type |
+|--------|------|
+| `run_id` | VARCHAR |
+| `generator_version` | VARCHAR |
+| `seed` | BIGINT |
+| `n_viewers` | BIGINT |
+| `n_sessions` | BIGINT |
+| `n_biometric_rows` | BIGINT |
+| `generated_at` | VARCHAR |
+| `data_source` | VARCHAR |
+
+
+## analysis (mixed provenance)
+
+### `analysis.viewer_seconds`
+
+**Grain** one row per (session, second)  ·  **Key** `session_id, second`  ·  **Rows** 33,908
+
+The joined table the whole project exists to produce: each second of each viewer's response, alongside what the creative was doing at that second and who the viewer is.
+
+> MIXED PROVENANCE. Creative columns are measured from real video files; viewer columns are synthetic. `data_source` marks it.
+
+> This is the table to model on. One row per viewer-second, every predictor already attached.
+
+| Column | Type |
+|--------|------|
+| `session_id` | VARCHAR |
+| `viewer_id` | VARCHAR |
+| `creative_id` | VARCHAR |
+| `second` | INTEGER |
+| `attention_index` | DOUBLE |
+| `gaze_on_screen` | BOOLEAN |
+| `face_detected` | BOOLEAN |
+| `valence` | DOUBLE |
+| `arousal` | DOUBLE |
+| `viewer_p_happiness` | DOUBLE |
+| `viewer_p_neutral` | DOUBLE |
+| `viewer_p_surprise` | DOUBLE |
+| `viewer_p_sadness` | DOUBLE |
+| `position_in_ad` | DOUBLE |
+| `n_cuts` | BIGINT |
+| `motion` | DOUBLE |
+| `brightness` | DOUBLE |
+| `audio_class` | VARCHAR |
+| `has_speech` | BOOLEAN |
+| `creative_has_face` | BOOLEAN |
+| `has_screen_text` | BOOLEAN |
+| `creative_p_happiness` | DOUBLE |
+| `modal_shot_index` | BIGINT |
+| `age_band` | VARCHAR |
+| `gender` | VARCHAR |
+| `region` | VARCHAR |
+| `device` | VARCHAR |
+| `environment` | VARCHAR |
+| `latent_implicit_pref` | DOUBLE |
+| `iat_d_score` | DOUBLE |
+| `completed` | BOOLEAN |
+| `watch_time_s` | BIGINT |
+| `data_source` | VARCHAR |
+
+### `analysis.creative_performance`
+
+**Grain** one row per creative  ·  **Key** `creative_id`  ·  **Rows** 5
+
+Per-creative rollup of the synthetic panel: completion, attention, valence and survey scores next to the creative's own measured attributes.
+
+> Differences between creatives here are generator artefacts, not findings about these ads. The creative-side columns are real; the response columns are not.
+
+| Column | Type |
+|--------|------|
+| `creative_id` | VARCHAR |
+| `display_name` | VARCHAR |
+| `duration_s` | DOUBLE |
+| `n_shots` | BIGINT |
+| `cuts_per_minute` | DOUBLE |
+| `words_per_minute` | DOUBLE |
+| `modal_setting` | VARCHAR |
+| `modal_style` | VARCHAR |
+| `n_sessions` | BIGINT |
+| `n_sessions_with_biometrics` | BIGINT |
+| `completion_rate` | DOUBLE |
+| `mean_watched_share` | DOUBLE |
+| `mean_attention` | DOUBLE |
+| `mean_valence` | DOUBLE |
+| `gaze_share` | DOUBLE |
+| `face_found_share` | DOUBLE |
+| `likeability` | DOUBLE |
+| `purchase_intent` | DOUBLE |
+| `message_clarity` | DOUBLE |
+| `brand_recall_rate` | DOUBLE |
+| `data_source` | VARCHAR |

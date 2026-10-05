@@ -28,7 +28,9 @@ RUN bash /tmp/download_models.sh
 
 WORKDIR /app
 COPY pipeline/ /app/pipeline/
+COPY audience/ /app/audience/
 COPY transforms/ /app/transforms/
+COPY transforms_audience/ /app/transforms_audience/
 
 ENTRYPOINT ["python", "-m", "pipeline.run"]
 CMD ["all"]

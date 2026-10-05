@@ -15,10 +15,11 @@ from . import config
 
 
 def _render(sql: str) -> str:
-    """Only two substitutions, so the SQL stays readable and copy-pasteable."""
+    """A few path substitutions, so the SQL stays readable and copy-pasteable."""
     return (sql
             .replace("${RAW}", config.RAW_DIR.as_posix())
-            .replace("${MARTS}", config.MART_DIR.as_posix()))
+            .replace("${MARTS}", config.MART_DIR.as_posix())
+            .replace("${AUDIENCE}", (config.WAREHOUSE_DIR / "audience").as_posix()))
 
 
 def connect(read_only: bool = False) -> duckdb.DuckDBPyConnection:
@@ -26,11 +27,13 @@ def connect(read_only: bool = False) -> duckdb.DuckDBPyConnection:
     return duckdb.connect(str(config.DUCKDB_PATH), read_only=read_only)
 
 
-def run(verbose: bool = True) -> list[str]:
+def run(directory: Path | None = None, verbose: bool = True) -> list[str]:
+    """Execute every .sql file in `directory`, in filename order."""
+    directory = directory or config.TRANSFORM_DIR
     config.MART_DIR.mkdir(parents=True, exist_ok=True)
-    scripts = sorted(config.TRANSFORM_DIR.glob("*.sql"))
+    scripts = sorted(directory.glob("*.sql"))
     if not scripts:
-        raise FileNotFoundError(f"no .sql files in {config.TRANSFORM_DIR}")
+        raise FileNotFoundError(f"no .sql files in {directory}")
 
     applied: list[str] = []
     with connect() as con:

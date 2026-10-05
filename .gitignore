@@ -3,14 +3,12 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 
-# Generated, and large. Rebuild with `make all`.
+# Generated intermediates. Rebuild with `make all` / `make audience`.
 warehouse/raw/
+warehouse/audience/
 warehouse/warehouse.duckdb
 cache/
 
-# warehouse/marts/ is deliberately NOT ignored: 660KB of Parquet + CSV is the
-# portable output, and committing it means an analyst can read the dataset
-# without Docker, a build, or the source videos.
-
-# Source videos are not redistributed here.
-video_data/*.mp4
+# warehouse/marts/ is deliberately NOT ignored: a couple of MB of Parquet and
+# CSV is the portable output, and committing it means an analyst can read the
+# whole dataset without Docker or a build.

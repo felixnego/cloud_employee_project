@@ -8,28 +8,32 @@ who is speaking, what is being said, how fast it is cutting, what the soundtrack
 is doing. An analyst with SQL and a bit of Python can answer *"what was on screen
 at 0:14?"* without opening a video player.
 
-This is the **creative side** of an ad-testing dataset. It is built to have
-audience data — biometrics, demographics, survey responses — joined onto it, and
-the schema is shaped around that join. See
-[Where audience data plugs in](#where-audience-data-plugs-in).
+This is the **creative side** of an ad-testing dataset. A second, clearly
+separated layer adds a **synthetic audience panel** — biometrics, demographics,
+survey responses and an Implicit Association Test — generated from the measured
+creative features, so the join the schema was shaped around can actually be
+exercised. See [The audience layer](#the-audience-layer-synthetic).
 
 ```bash
 # the five source MP4s are committed in video_data/
 make build       # build the image (~5 min first time: deps + 681MB of models)
 make all         # extract -> transform -> docs  (~4.5 min cold, seconds when cached)
+make audience    # generate + load + validate the synthetic panel (~20s)
 make notebook    # JupyterLab on http://localhost:8888
 ```
 
 Nothing to install but Docker. No API keys, no paid services, no network access
 after the build.
 
-**You can also skip all of that.** `warehouse/marts/` is committed — 660KB of
-Parquet and CSV. To read the dataset without Docker, a build, or the videos:
+**All of that is skippable.** `warehouse/marts/` is committed — 1.9MB of
+Parquet and CSV covering every table, creative and audience alike. To read the
+dataset without Docker or a build:
 
 ```python
 import pandas as pd
-pd.read_parquet("warehouse/marts/creative_seconds.parquet")   # the spine
+pd.read_parquet("warehouse/marts/creative_seconds.parquet")   # the creative spine
 pd.read_csv("warehouse/marts/creative_summary.csv")           # one row per ad
+pd.read_parquet("warehouse/marts/viewer_seconds.parquet")     # the joined table
 ```
 
 | Where to look | What is there |
@@ -38,6 +42,7 @@ pd.read_csv("warehouse/marts/creative_summary.csv")           # one row per ad
 | [`docs/schema.md`](docs/schema.md) | Every table, grain, key and column — generated from the warehouse, so it cannot drift |
 | [`transforms/*.sql`](transforms/) | The SQL that builds each mart, in order |
 | [`pipeline/extractors/`](pipeline/extractors/) | One file per feature, all behind the same interface |
+| [`audience/contract.py`](audience/contract.py) | The audience data contract a real panel ingest would satisfy |
 | `warehouse/marts/*.parquet` | The output, readable without this repo |
 
 ---
@@ -47,11 +52,11 @@ pd.read_csv("warehouse/marts/creative_summary.csv")           # one row per ad
 Each is one file in `pipeline/extractors/`. All models are ONNX or CTranslate2,
 run on CPU, and are baked into the image.
 
-| # | Feature | What it gives you | Tool |
+| # | Feature | What it provides | Tool |
 |---|---------|-------------------|------|
-| 1 | **Metadata** | Duration, resolution, orientation, frame rate, codecs, audio stream presence. Establishes that a vertical 576×1024 UGC clip and a 1280×720 broadcast film are different objects before you compare them. | ffprobe |
+| 1 | **Metadata** | Duration, resolution, orientation, frame rate, codecs, audio stream presence. Establishes that a vertical 576×1024 UGC clip and a 1280×720 broadcast film are different objects before any comparison. | ffprobe |
 | 2 | **Shots** | Boundaries of every cut, and the length of each shot. This is *pacing* — the difference between a 57-shot film and a 2-shot talking head. | PySceneDetect |
-| 3 | **Transcript** | Everything spoken, with timestamps at both utterance and individual-word level. Lets you locate a brand mention or a price to the half-second. | faster-whisper `small` |
+| 3 | **Transcript** | Everything spoken, with timestamps at both utterance and individual-word level. Locates a brand mention or a price to the half-second. | faster-whisper `small` |
 | 4 | **Visual** | Per-frame brightness, saturation, contrast, colourfulness, sharpness, edge density, and frame-to-frame motion. The raw texture of the picture, and the basis for "when did it get visually busy?". | OpenCV |
 | 5 | **Audio** | Per-frame loudness (dBFS), spectral shape, onset strength, harmonic/percussive balance, plus global tempo. Feeds the speech/music/silence classification. | librosa |
 | 6 | **On-screen text** | Every piece of text burned into the picture — taglines, prices, captions, logotype — with its size and position, consolidated into time spans. Text height separates a headline from a legal line. | RapidOCR (PP-OCRv4) |
@@ -88,7 +93,7 @@ video_data/*.mp4
 **There is no database server.** The workload is columnar, read-heavy,
 single-writer, and five files wide. Parquet on disk plus DuckDB as the engine
 gives zero ops, no migrations, no connection strings — and DuckDB is the local
-twin of MotherDuck, so "how would we host this?" has a one-line answer. The
+twin of MotherDuck, so hosting this has a one-line answer. The
 trade-off is real and stated: DuckDB is single-writer and not multi-tenant. The
 moment concurrent writers or a shared BI layer are needed, it is MotherDuck (same
 SQL, same files) or Postgres.
@@ -129,8 +134,8 @@ Full column-level documentation is in [`docs/schema.md`](docs/schema.md).
 ### Two details that matter
 
 **4 Hz is the native grain, seconds are the published one.** These are fast-cut
-social ads; at 1 Hz a 400 ms product reveal disappears. You can always aggregate
-up, never down — so extraction happens at 4 Hz and `creative_seconds` is the
+social ads; at 1 Hz a 400 ms product reveal disappears. Aggregating up is always
+possible, aggregating down is not — so extraction happens at 4 Hz and `creative_seconds` is the
 friendly rollup.
 
 **NULL and zero mean different things.** YOLOX samples at 2 Hz and OCR at 1 Hz,
@@ -142,30 +147,98 @@ resolution.
 
 ---
 
-## Where audience data plugs in
+## The audience layer (synthetic)
 
-This is what the time grain is *for*. Biometric traces, dial tests and timestamped
-survey responses arrive as `(viewer_id, creative_id, t)`. Snap `t` to whole
-seconds and the join is an equi-join:
+The creative layer is measured from real files. The audience layer is
+**generated**, and the two are kept structurally apart:
+
+| Schema | Contents | Provenance |
+|---|---|---|
+| `main` | creatives, shots, `creative_seconds`, transcripts … | measured from real video |
+| `audience` | viewers, sessions, biometrics, survey, IAT | **synthetic** |
+| `analysis` | the joined marts | mixed, and labelled as such |
+
+Separation is structural rather than a naming convention, because the worst
+failure mode for a project like this is a synthetic number being read as a real
+one. Every audience row additionally carries `data_source = 'synthetic_v1'`.
+
+### A contract, not just a script
+
+`audience/contract.py` defines seven tables — grain, key, purpose, and the places
+each will bite. The generator is one *producer* of that contract; a real ingest
+from a biometric vendor, a survey platform and an IAT tool would be another,
+writing the same tables. Nothing downstream imports the generator, so migrating
+to real data means deleting `audience/` and pointing an ingest at the same
+tables. The dependency runs one way — `audience` imports `pipeline`, never the
+reverse.
+
+### The response is caused by the creative
+
+Random numbers would exercise nothing. Attention at each second is a logistic
+function of what the ad is doing at that second, read from `creative_seconds`:
+
+```
+attention ~ logistic( β_pos·position_in_ad + β_cut·n_cuts + β_face·has_face
+                    + β_speech·has_speech + β_text·has_screen_text
+                    + β_motion·motion_z + viewer_effect + AR(1) noise )
+```
+
+Expression valence follows on-screen affect and the viewer's implicit preference;
+abandonment is a hazard that rises as attention falls; survey answers follow from
+what happened during the exposure. The IAT runs in the correct causal direction —
+a latent preference causes the reaction times, and the D-score recovers it
+imperfectly, as a real IAT would.
+
+Some behaviour emerges rather than being written down: completion rate falls with
+ad duration (65% on the 33-second clip, 14% on the 147-second film), and attention
+declines monotonically across every runtime.
+
+### Ground truth is published
+
+`audience.generator_params` holds the coefficients that produced the panel. This
+is the advantage synthetic data has over real data: an analysis can be *checked*.
+`python -m audience.run validate` refits the attention model by OLS and confirms
+the planted coefficients come back out, alongside integrity checks:
+
+```
+PASS  recovers beta[cut_density]                   true +0.45  estimated +0.44
+PASS  recovers beta[has_face]                      true +0.35  estimated +0.36
+PASS  IAT D-score tracks the latent trait          corr = 0.568
+PASS  emotions NULL exactly when no face detected
+14/14 checks passed
+```
+
+Runs are reproducible: a fixed seed reproduces the panel exactly.
+
+### The join
+
+`analysis.viewer_seconds` is the table the schema was designed to produce — one
+row per viewer-second, every predictor attached:
 
 ```sql
 SELECT v.second, v.attention_index,
-       s.audio_class, s.n_cuts, s.max_faces, s.modal_face_emotion,
-       sh.label_subject, sh.label_setting
-FROM viewer_seconds v
-JOIN creative_seconds s USING (creative_id, second)
-JOIN shots sh ON sh.creative_id = s.creative_id
-             AND sh.shot_index  = s.modal_shot_index
-WHERE v.second BETWEEN 12 AND 20;
+       s.audio_class, s.n_cuts, s.max_faces, s.modal_face_emotion
+FROM audience.biometric_seconds v
+JOIN main.creative_seconds s USING (creative_id, second);
 ```
 
-No interpolation, no window functions, no per-analyst resampling logic. *"Attention
+No interpolation, no window functions, no per-analyst resampling. *"Attention
 dipped at 0:14 — what was on screen, who was speaking, how fast was it cutting?"*
 is one query.
 
+### What is deliberately modelled
+
+- **Consent.** A few panelists withhold biometric consent and have no biometric
+  rows. The real pipeline must honour that, so the synthetic one does.
+- **Missing signal.** When the webcam loses the face, emotion and valence are
+  `NULL`, not zero — the same discipline the creative layer uses.
+- **Incomplete design.** Not every viewer sees every creative, as in a real panel.
+- **Response style.** Some panelists answer consistently high; acquiescence is a
+  viewer trait, not noise.
+
 ---
 
-## What we tested and rejected
+## Tested and rejected
 
 Measured decisions, not preferences.
 
@@ -236,6 +309,17 @@ Things that are wrong or weak based on cursory research. Points to bring up to t
   other languages, though `language` and `language_probability` are recorded.
 - **Five creatives is not a sample.** Every cross-creative number is a
   description of these five files, not evidence about advertising.
+- **The audience panel is synthetic and proves nothing about these ads.** It
+  demonstrates that the schema, the join and the analysis path work. Any
+  difference between creatives in a response column is a generator artefact.
+- **The generator cannot validate its own assumptions.** It confirms that an
+  analysis recovers the coefficients planted in it. Whether those coefficients
+  resemble real human attention is a question only real panel data can answer.
+- **Expression inference is scientifically contested.** That discrete emotions
+  are reliably readable from faces is disputed (Barrett et al., 2019). Both the
+  creative-side `face_detections` and the synthetic viewer expressions inherit
+  that caveat, and real deployment needs explicit consent and retention limits
+  beyond the consent flag modelled here.
 
 ---
 
@@ -253,7 +337,14 @@ pipeline/
   docgen.py              generates docs/schema.md from the live warehouse
   extractors/            one file per feature
   models/                ONNX wrappers (YuNet, FER+, YOLOX, CLIP)
+audience/
+  config.py              panel size, seed, and the ground-truth coefficients
+  contract.py            the seven-table contract a real ingest would satisfy
+  generate.py            the generator (creative features -> viewer response)
+  validate.py            integrity + coefficient-recovery checks
+  run.py                 CLI
 transforms/              numbered SQL, raw views -> dims -> spine -> marts
+transforms_audience/     SQL building the audience and analysis schemas
 notebooks/               the overview notebook
 docs/schema.md           generated schema reference
 warehouse/               generated: raw/, marts/, warehouse.duckdb
@@ -268,5 +359,9 @@ docker compose run --rm pipeline extract --only visual,audio   # a subset
 docker compose run --rm pipeline extract --creative norwich    # one creative
 docker compose run --rm pipeline extract --force               # ignore the manifest
 docker compose run --rm pipeline transform                     # rebuild marts only
+
+docker compose run --rm --entrypoint python pipeline -m audience.run all
+docker compose run --rm --entrypoint python pipeline -m audience.run generate --seed 7 --n-viewers 800
+docker compose run --rm --entrypoint python pipeline -m audience.run validate
 ```
 

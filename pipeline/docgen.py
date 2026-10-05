@@ -189,19 +189,21 @@ def _extractor_section() -> str:
     return "\n".join(out)
 
 
-def _table_section(con, table: str) -> str:
-    doc = TABLE_DOCS.get(table, {})
+def _table_section(con, table: str, schema: str = "main",
+                   docs: dict | None = None) -> str:
+    doc = (docs or TABLE_DOCS).get(table, {})
     cols = con.execute("""
         SELECT column_name, data_type
         FROM information_schema.columns
-        WHERE table_schema = 'main' AND table_name = ?
+        WHERE table_schema = ? AND table_name = ?
         ORDER BY ordinal_position
-    """, [table]).fetchall()
+    """, [schema, table]).fetchall()
     if not cols:
         return ""
-    n_rows = con.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
+    n_rows = con.execute(f'SELECT count(*) FROM "{schema}"."{table}"').fetchone()[0]
 
-    parts = [f"### `{table}`", ""]
+    qualified = table if schema == "main" else f"{schema}.{table}"
+    parts = [f"### `{qualified}`", ""]
     parts.append(f"**Grain** {doc.get('grain', '?')}  ·  "
                  f"**Key** `{doc.get('key', '?')}`  ·  "
                  f"**Rows** {n_rows:,}")
@@ -249,6 +251,14 @@ video_data/*.mp4
       |  transforms/10_export_marts.sql
       v
  [4] warehouse/marts/*.parquet + .csv <- everything else reads this
+
+Separately, the synthetic audience layer (see the end of this document):
+
+ audience/generate.py   reads main.creative_seconds, writes warehouse/audience/*.parquet
+      |
+      |  transforms_audience/*.sql
+      v
+ audience.*  (synthetic)  +  analysis.*  (measured creative x synthetic response)
 ```
 
 ## The nine extractors
@@ -290,5 +300,54 @@ pd.read_parquet("warehouse/marts/creative_seconds.parquet")
             for table in present:
                 body.append(_table_section(con, table))
 
+        body.append(_audience_sections(con))
+
     path.write_text("\n".join(body))
     return path
+
+
+def _audience_sections(con) -> str:
+    """Document the synthetic layer, if it has been generated.
+
+    Imported lazily and guarded: `audience` depends on `pipeline`, never the
+    reverse, so deleting the generator must not break this file.
+    """
+    try:
+        from audience import contract
+    except ImportError:
+        return ""
+
+    have = {(r[0], r[1]) for r in con.execute(
+        "SELECT schema_name, table_name FROM duckdb_tables() "
+        "WHERE schema_name IN ('audience', 'analysis')").fetchall()}
+    if not have:
+        return ""
+
+    parts = ["""
+---
+
+# Audience layer (SYNTHETIC)
+
+Everything below is **generated**, not measured. It lives in its own schemas so
+that a synthetic number can never be mistaken for a real one, and every row
+carries `data_source = 'synthetic_v1'`.
+
+The response is driven by the measured creative features: attention at second
+*t* is a function of the cuts, faces, speech and motion that `creative_seconds`
+records for that second, plus viewer traits, plus an AR(1) term. The
+coefficients that produced it are published in `audience.generator_params`, so
+an analysis can be checked against the truth that generated the data.
+
+`audience/contract.py` is the contract these tables satisfy. A real ingest would
+write the same tables and nothing downstream would change.
+
+## audience
+"""]
+    for table, doc in contract.TABLES.items():
+        if ("audience", table) in have:
+            parts.append(_table_section(con, table, "audience", contract.TABLES))
+    parts.append("\n## analysis (mixed provenance)\n")
+    for table, doc in contract.ANALYSIS_TABLES.items():
+        if ("analysis", table) in have:
+            parts.append(_table_section(con, table, "analysis", contract.ANALYSIS_TABLES))
+    return "\n".join(parts)

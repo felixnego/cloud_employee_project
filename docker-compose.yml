@@ -27,7 +27,8 @@ services:
       - ./warehouse:/warehouse         # Parquet + DuckDB, the data layer
       - ./cache:/cache                 # decoded frames + WAV, reusable
       - ./docs:/app/docs               # `run docs` writes schema.md back out
-      - ./transforms:/app/transforms    # edit SQL without rebuilding the image
+      - ./transforms:/app/transforms            # edit SQL without rebuilding
+      - ./transforms_audience:/app/transforms_audience
     # ENTRYPOINT is `python -m pipeline.run`; pass a subcommand as the command.
     command: ["all"]
 
