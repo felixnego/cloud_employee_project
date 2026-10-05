@@ -1,0 +1,401 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Creative pipeline \u2014 processing API",
+    "description": "Processing API \u2014 the video pipeline as an async service.\n\nFor engineering stakeholders who want the feature extraction but not the rest\nof this project: a step inside someone else's pipeline, or a worker behind a\njob queue.\n\nExtraction takes seconds to minutes per video, so every call is asynchronous:\nPOST a job, get a 202 and a job_id, poll it. There is no synchronous endpoint\non purpose \u2014 an HTTP request that holds a connection open for four minutes is\na request that times out somewhere in the middle.\n\nIt is usable standalone. Point WAREHOUSE_DIR and VIDEO_DIR anywhere and this\nservice becomes a self-contained feature extractor that knows nothing about\nthe audience layer or the marts.\n\n    uvicorn api.processing:app --host 0.0.0.0 --port 8002\n",
+    "version": "1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/extractors": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "List Extractors",
+        "description": "The nine features, their versions and their output grain.\n\nDiscoverability for someone choosing a subset: the same registry the CLI\nand the docs read, so it cannot drift.",
+        "operationId": "list_extractors_extractors_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response List Extractors Extractors Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Create Job",
+        "description": "Queue an extraction.\n\nSupply either `url` (fetched first) or `creative_id` (already on disk).\n`extractors` selects a subset; declared dependencies are pulled in\nautomatically, so asking for `labels` also runs `shots`.",
+        "operationId": "create_job_jobs_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "List Jobs",
+        "operationId": "list_jobs_jobs_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Job"
+                  },
+                  "title": "Response List Jobs Jobs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Get Job",
+        "operationId": "get_job_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Job": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "creative_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creative Id"
+          },
+          "extractors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Extractors",
+            "default": []
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "results": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Results",
+            "default": []
+          },
+          "output_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Dir"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "created_at"
+        ],
+        "title": "Job"
+      },
+      "JobRequest": {
+        "properties": {
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "creative_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creative Id"
+          },
+          "extractors": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extractors",
+            "description": "Subset of extractor names; dependencies are pulled in. Omit to run all nine."
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "JobRequest",
+        "description": "Process a video. Either a URL to fetch, or a creative already on disk."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

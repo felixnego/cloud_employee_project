@@ -1,0 +1,438 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Creative pipeline \u2014 ingestion API",
+    "description": "Ingestion API \u2014 getting new data in.\n\nTwo things arrive from outside: new creatives, and new audience biometrics.\n\nThe rule that shapes this service: **it never writes to warehouse.duckdb.**\nDuckDB is single-writer, so an API holding the write lock would deadlock the\npipeline. Instead:\n\n  * a new creative is downloaded into VIDEO_DIR, where `discover_creatives()`\n    already finds it \u2014 no registry table, no migration, nothing to keep in sync;\n  * a biometrics batch is appended as Parquet to a landing zone, and\n    `python -m api.load` folds it into the warehouse later.\n\nLanding zone then batch load is how ingest works anyway, so the constraint cost\nnothing and kept the single-writer property honest.\n\n    uvicorn api.ingest:app --host 0.0.0.0 --port 8001\n",
+    "version": "1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/creatives": {
+      "get": {
+        "tags": [
+          "creatives"
+        ],
+        "summary": "List Creatives",
+        "description": "Whatever is currently on disk. Cheap: no warehouse read.",
+        "operationId": "list_creatives_creatives_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response List Creatives Creatives Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "creatives"
+        ],
+        "summary": "Add Creative",
+        "description": "Register a new creative by URL.\n\nDownloads it into VIDEO_DIR and returns its content-addressed identity.\nDoes not extract \u2014 that is the processing API's job, deliberately, so a\nslow model run never blocks an ingest request.",
+        "operationId": "add_creative_creatives_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreativeFromURL"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreativeAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/biometrics": {
+      "post": {
+        "tags": [
+          "audience"
+        ],
+        "summary": "Add Biometrics",
+        "description": "Append a batch of viewer-seconds to the landing zone.\n\nShaped for a browser client posting `getUserMedia`-derived expression data\nevery few seconds: small batches, no transaction, 202 rather than 200\nbecause the rows are not queryable until the next load.",
+        "operationId": "add_biometrics_biometrics_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BiometricBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/landing": {
+      "get": {
+        "tags": [
+          "audience"
+        ],
+        "summary": "Landing Status",
+        "description": "What is waiting to be loaded.",
+        "operationId": "landing_status_landing_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Landing Status Landing Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BatchAccepted": {
+        "properties": {
+          "batch_id": {
+            "type": "string",
+            "title": "Batch Id"
+          },
+          "rows_accepted": {
+            "type": "integer",
+            "title": "Rows Accepted"
+          },
+          "landed_at": {
+            "type": "string",
+            "title": "Landed At"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "batch_id",
+          "rows_accepted",
+          "landed_at",
+          "note"
+        ],
+        "title": "BatchAccepted"
+      },
+      "BiometricBatch": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "viewer_id": {
+            "type": "string",
+            "title": "Viewer Id"
+          },
+          "creative_id": {
+            "type": "string",
+            "title": "Creative Id"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/BiometricRow"
+            },
+            "type": "array",
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "viewer_id",
+          "creative_id",
+          "rows"
+        ],
+        "title": "BiometricBatch"
+      },
+      "BiometricRow": {
+        "properties": {
+          "second": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Second"
+          },
+          "attention_index": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attention Index"
+          },
+          "gaze_on_screen": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gaze On Screen"
+          },
+          "face_detected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Face Detected"
+          },
+          "valence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": -1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valence"
+          },
+          "arousal": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arousal"
+          },
+          "emotions": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emotions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "second"
+        ],
+        "title": "BiometricRow",
+        "description": "One viewer-second. Mirrors `audience.biometric_seconds`."
+      },
+      "CreativeAccepted": {
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "title": "Creative Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "next": {
+            "type": "string",
+            "title": "Next"
+          }
+        },
+        "type": "object",
+        "required": [
+          "creative_id",
+          "title",
+          "sha256",
+          "size_bytes",
+          "path",
+          "next"
+        ],
+        "title": "CreativeAccepted"
+      },
+      "CreativeFromURL": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "Overrides the filename-derived title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "CreativeFromURL",
+        "description": "Register a video by URL.\n\nURL rather than multipart upload on purpose: creatives already live in\nobject storage or a CDN in every setup worth integrating with, the request\nstays small, and the service needs no upload handling or temp-file cleanup."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

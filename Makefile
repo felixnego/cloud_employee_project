@@ -5,7 +5,7 @@ COMPOSE := docker compose
 RUN     := $(COMPOSE) run --rm pipeline
 
 .DEFAULT_GOAL := help
-.PHONY: help build list all extract transform docs audience notebook shell clean clean-cache
+.PHONY: help build list all extract transform docs audience api openapi load-ingested notebook shell clean clean-cache
 
 help:  ## show this help
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -31,6 +31,15 @@ docs:  ## regenerate docs/schema.md from the live warehouse
 
 audience:  ## generate the synthetic audience panel, load it, and validate it
 	$(COMPOSE) run --rm --entrypoint python pipeline -m audience.run all
+
+api:  ## start both APIs: ingest on :8001, processing on :8002 (docs at /docs)
+	$(COMPOSE) up ingest-api processing-api
+
+openapi:  ## export both OpenAPI specs to docs/openapi-*.json
+	$(COMPOSE) run --rm --entrypoint python pipeline -m api.spec
+
+load-ingested:  ## fold landed biometric batches into the warehouse
+	$(COMPOSE) run --rm --entrypoint python pipeline -m api.load
 
 notebook:  ## start JupyterLab on http://localhost:8888  (no token)
 	$(COMPOSE) up notebook

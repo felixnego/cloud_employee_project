@@ -32,6 +32,31 @@ services:
     # ENTRYPOINT is `python -m pipeline.run`; pass a subcommand as the command.
     command: ["all"]
 
+  # Getting new data in: a creative by URL, or a batch of biometrics.
+  ingest-api:
+    <<: *common
+    entrypoint: []
+    command: [uvicorn, api.ingest:app, --host, 0.0.0.0, --port, "8001"]
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./video_data:/data/videos      # writable: new creatives land here
+      - ./warehouse:/warehouse         # writes Parquet to the landing zone only
+      - ./api:/app/api                 # edit without rebuilding
+
+  # The video pipeline as an async job service, usable on its own.
+  processing-api:
+    <<: *common
+    entrypoint: []
+    command: [uvicorn, api.processing:app, --host, 0.0.0.0, --port, "8002"]
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./video_data:/data/videos
+      - ./warehouse:/warehouse
+      - ./cache:/cache
+      - ./api:/app/api
+
   notebook:
     <<: *common
     entrypoint: []

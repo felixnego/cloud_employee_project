@@ -19,6 +19,7 @@ exercised. See [The audience layer](#the-audience-layer-synthetic).
 make build       # build the image (~5 min first time: deps + 681MB of models)
 make all         # extract -> transform -> docs  (~4.5 min cold, seconds when cached)
 make audience    # generate + load + validate the synthetic panel (~20s)
+make api         # ingest API on :8001, processing API on :8002
 make notebook    # JupyterLab on http://localhost:8888
 ```
 
@@ -43,6 +44,8 @@ pd.read_parquet("warehouse/marts/viewer_seconds.parquet")     # the joined table
 | [`transforms/*.sql`](transforms/) | The SQL that builds each mart, in order |
 | [`pipeline/extractors/`](pipeline/extractors/) | One file per feature, all behind the same interface |
 | [`audience/contract.py`](audience/contract.py) | The audience data contract a real panel ingest would satisfy |
+| [`api/`](api/) | Two small HTTP services: data ingestion, and the pipeline as an async job |
+| [`docs/openapi-ingest.json`](docs/openapi-ingest.json) · [`-processing.json`](docs/openapi-processing.json) | OpenAPI 3.1 specs, committed — readable without running anything |
 | `warehouse/marts/*.parquet` | The output, readable without this repo |
 
 ---
@@ -238,6 +241,129 @@ is one query.
 
 ---
 
+## The two APIs
+
+Two small FastAPI services, one image, no broker. They exist for engineering
+stakeholders, and they are deliberately separate because they serve different
+people: one is about getting data *into* this project, the other is about using
+the video pipeline *outside* it.
+
+```bash
+make api        # ingest on :8001, processing on :8002
+make openapi    # re-export docs/openapi-*.json after changing an endpoint
+```
+
+Three ways to inspect the contract, two of which need nothing running:
+
+| | |
+|---|---|
+| [`docs/openapi-*.json`](docs/) | committed OpenAPI 3.1 specs — read them straight from the repo |
+| `api/models.py` | the Pydantic models the specs are generated from |
+| `http://localhost:8001/docs` · `:8002/docs` | interactive Swagger UI, plus `/redoc` and live `/openapi.json` |
+
+The specs carry the validation rules, not just the shapes: `attention_index`
+bounded 0–1, `valence` −1 to 1, batches capped at 10,000 rows, emotion labels
+constrained to the same eight classes the creative side uses. Each endpoint's
+description carries its design rationale, so the spec explains *why* as well as
+*what*.
+
+### Ingestion API — `:8001`
+
+| | |
+|---|---|
+| `POST /creatives` | register a new creative **by URL** |
+| `GET /creatives` | what is on disk |
+| `POST /biometrics` | append a batch of viewer-seconds |
+| `GET /landing` | what is waiting to be loaded |
+| `GET /health` | |
+
+**By URL, not multipart upload.** Creatives already live in object storage or a
+CDN in any setup worth integrating with, so a URL keeps requests small and the
+service free of upload handling, temp files and cleanup.
+
+```bash
+curl -X POST localhost:8001/creatives -H 'content-type: application/json' \
+  -d '{"url": "https://example.com/spot.mp4", "title": "Autumn Campaign"}'
+# -> {"creative_id": "autumn-campaign", "sha256": "...", "next": "POST /jobs ..."}
+```
+
+Registration does not extract. A model run takes seconds to minutes, and an
+ingest request should not wait for it — that is the processing API's job.
+
+The biometrics endpoint is shaped for a browser client posting
+`getUserMedia`-derived expression data in small batches:
+
+```bash
+curl -X POST localhost:8001/biometrics -H 'content-type: application/json' -d '{
+  "session_id": "S1", "viewer_id": "V1", "creative_id": "assume-that-i-can-coordown",
+  "rows": [{"second": 0, "attention_index": 0.82, "face_detected": true,
+            "valence": 0.31, "emotions": {"neutral": 0.6, "happiness": 0.4}}]}'
+```
+
+Emotion labels are validated against the same eight classes the creative side
+uses, so ingested and generated rows share one shape.
+
+### Processing API — `:8002`
+
+| | |
+|---|---|
+| `POST /jobs` | queue an extraction (by `url` or `creative_id`) → `202` |
+| `GET /jobs/{id}` | status, timings, per-extractor results |
+| `GET /jobs` | recent jobs |
+| `GET /extractors` | the nine features, versions and grains |
+| `GET /health` | |
+
+The video pipeline as a service, for a step in someone else's pipeline or a
+worker behind a job queue. **Every call is asynchronous** — there is no
+synchronous endpoint, because an HTTP request held open for four minutes is a
+request that times out somewhere in the middle.
+
+```bash
+curl -X POST localhost:8002/jobs -H 'content-type: application/json' \
+  -d '{"creative_id": "norwich", "extractors": ["labels"]}'
+# -> 202 {"job_id": "3f903ad97d61", "status": "queued"}
+```
+
+Asking for `labels` runs `shots` first: declared dependencies are resolved from
+the registry, so callers pick the features they want without knowing the
+ordering. `creative_id` matches on substring, so `"norwich"` resolves.
+
+It runs standalone. Point `WAREHOUSE_DIR` and `VIDEO_DIR` anywhere and the
+service is a self-contained feature extractor that knows nothing about the
+audience layer, the marts or the notebook.
+
+### Why neither API writes to DuckDB
+
+DuckDB is single-writer. A service holding the write lock would deadlock the
+pipeline, so:
+
+- a new creative is **downloaded into `VIDEO_DIR`**, where `discover_creatives()`
+  already finds it — no registry table, no migration, nothing to keep in sync;
+- a biometrics batch is **appended as Parquet to a landing zone**, and
+  `make load-ingested` folds it into `audience.ingested_biometric_seconds` when
+  the lock is free.
+
+Landing zone, then batch load, is how ingest works anyway, so the constraint
+cost nothing and kept the single-writer property honest rather than papered over.
+Ingested rows land in their own table rather than mixed into the synthetic
+panel: whether real and generated rows should ever sit together is a decision
+for whoever has real data.
+
+### Deliberate limits
+
+- **Jobs live in memory.** One worker thread, in submission order, lost on
+  restart, and a second replica would have its own store. The seam for a real
+  queue is `pipeline.run.extract_one` — a Celery or RQ worker calls exactly the
+  function `api/jobs.py` calls, and nothing else changes.
+- **No authentication.** Both services assume a trusted network.
+- **URL fetching is an SSRF vector.** Guards here are blunt — scheme, 500 MB
+  cap, timeout. A real deployment needs an egress allowlist or signed URLs.
+- **No query or bulk-export endpoints**, on purpose. Analytical access goes
+  through Parquet and DuckDB, which do it better. The API surface is
+  transactional only, and that boundary is the design.
+
+---
+
 ## Tested and rejected
 
 Measured decisions, not preferences.
@@ -343,6 +469,13 @@ audience/
   generate.py            the generator (creative features -> viewer response)
   validate.py            integrity + coefficient-recovery checks
   run.py                 CLI
+api/
+  ingest.py              ingestion API    (creatives by URL, biometrics batches)
+  processing.py          processing API   (async extraction jobs)
+  jobs.py                in-process job store, one worker thread
+  download.py            guarded URL fetch
+  load.py                landing zone -> warehouse
+  models.py              request/response contract
 transforms/              numbered SQL, raw views -> dims -> spine -> marts
 transforms_audience/     SQL building the audience and analysis schemas
 notebooks/               the overview notebook
@@ -363,5 +496,8 @@ docker compose run --rm pipeline transform                     # rebuild marts o
 docker compose run --rm --entrypoint python pipeline -m audience.run all
 docker compose run --rm --entrypoint python pipeline -m audience.run generate --seed 7 --n-viewers 800
 docker compose run --rm --entrypoint python pipeline -m audience.run validate
+
+docker compose up ingest-api processing-api                   # both APIs
+docker compose run --rm --entrypoint python pipeline -m api.load   # load landed batches
 ```
 

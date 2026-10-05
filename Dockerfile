@@ -29,6 +29,7 @@ RUN bash /tmp/download_models.sh
 WORKDIR /app
 COPY pipeline/ /app/pipeline/
 COPY audience/ /app/audience/
+COPY api/ /app/api/
 COPY transforms/ /app/transforms/
 COPY transforms_audience/ /app/transforms_audience/
 
